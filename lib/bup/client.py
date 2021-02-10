@@ -17,6 +17,7 @@ from bup.vint import read_bvec, read_vuint, write_bvec
 
 bwlimit = None
 
+_oid_len = 32
 
 class ClientError(Exception):
     pass
@@ -162,11 +163,11 @@ class Client:
     def check_busy(self):
         if self._busy:
             raise ClientError('already busy with command %r' % self._busy)
-        
+
     def ensure_busy(self):
         if not self._busy:
             raise ClientError('expected to be busy, but not busy?!')
-        
+
     def _not_busy(self):
         self._busy = None
 
@@ -318,7 +319,7 @@ class Client:
         r = self.conn.readline().strip()
         self.check_ok()
         if r:
-            assert(len(r) == 40)   # hexified sha
+            assert(len(r) == 2 * _oid_len)   # hexified sha
             return unhexlify(r)
         else:
             return None   # nonexistent ref
@@ -397,7 +398,7 @@ class Client:
         for line in lines_until_sentinel(conn, b'\n', ClientError):
             line = line[:-1]
             oidx, name = line.split(b' ')
-            if len(oidx) != 40:
+            if len(oidx) != _oid_len * 2:
                 raise ClientError('Invalid object fingerprint in %r' % line)
             if not name:
                 raise ClientError('Invalid reference name in %r' % line)
@@ -438,14 +439,14 @@ class Client:
         if not format:
             for line in lines_until_sentinel(conn, b'\n', ClientError):
                 line = line.strip()
-                assert len(line) == 40
+                assert len(line) == 2 * _oid_len
                 yield line
         else:
             for line in lines_until_sentinel(conn, b'\n', ClientError):
                 if not line.startswith(b'commit '):
                     raise ClientError('unexpected line ' + repr(line))
                 cmt_oidx = line[7:].strip()
-                assert len(cmt_oidx) == 40
+                assert len(cmt_oidx) == _oid_len * 2
                 yield cmt_oidx, parse(conn)
         # FIXME: confusing
         not_ok = self.check_ok()
@@ -533,7 +534,7 @@ class PackWriter_Remote(git.PackWriter):
         assert(data)
         assert(sha)
         crc = zlib.crc32(data) & 0xffffffff
-        outbuf = b''.join((struct.pack('!I', len(data) + 20 + 4),
+        outbuf = b''.join((struct.pack('!I', len(data) + _oid_len + 4),
                            sha,
                            struct.pack('!I', crc),
                            data))

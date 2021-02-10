@@ -14,6 +14,7 @@ extract_bits = _helpers.extract_bits
 _total_searches = 0
 _total_steps = 0
 
+_oid_len = 32
 
 class PackMidx:
     """Wrapper which contains data from multiple index files.
@@ -34,9 +35,9 @@ class PackMidx:
             return self._init_failed()
         ver = struct.unpack('!I', self.map[4:8])[0]
         if ver < MIDX_VERSION:
-            log('Warning: ignoring old-style (v%d) midx %r\n' 
+            log('Warning: ignoring old-style (v%d) midx %r\n'
                 % (ver, path_msg(filename)))
-            self.force_keep = False  # old stuff is boring  
+            self.force_keep = False  # old stuff is boring
             return self._init_failed()
         if ver > MIDX_VERSION:
             log('Warning: ignoring too-new (v%d) midx %r\n'
@@ -50,8 +51,8 @@ class PackMidx:
         # fanout len is self.entries * 4
         self.sha_ofs = self.fanout_ofs + self.entries * 4
         self.nsha = self._fanget(self.entries - 1)
-        # sha table len is self.nsha * 20
-        self.which_ofs = self.sha_ofs + 20 * self.nsha
+        # sha table len is self.nsha * _oid_len
+        self.which_ofs = self.sha_ofs + _oid_len * self.nsha
         # which len is self.nsha * 4
         self.idxnames = self.map[self.which_ofs + 4 * self.nsha:].split(b'\0')
 
@@ -78,8 +79,8 @@ class PackMidx:
     def _get(self, i):
         if i >= self.nsha or i < 0:
             raise IndexError('invalid midx index %d' % i)
-        ofs = self.sha_ofs + i * 20
-        return self.map[ofs : ofs + 20]
+        ofs = self.sha_ofs + i * _oid_len
+        return self.map[ofs : ofs + _oid_len]
 
     def _get_idx_i(self, i):
         if i >= self.nsha or i < 0:
@@ -132,8 +133,8 @@ class PackMidx:
 
     def __iter__(self):
         start = self.sha_ofs
-        for ofs in range(start, start + self.nsha * 20, 20):
-            yield self.map[ofs : ofs + 20]
+        for ofs in range(start, start + self.nsha * _oid_len, _oid_len):
+            yield self.map[ofs : ofs + _oid_len]
 
     def __len__(self):
         return int(self.nsha)

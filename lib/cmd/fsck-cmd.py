@@ -28,6 +28,7 @@ from bup.compat import argv_bytes
 from bup.helpers import Sha1, chunkyreader, istty2, log, progress
 from bup.io import byte_stream
 
+_oid_len = 32
 
 par2_ok = 0
 nullf = open(os.devnull, 'wb+')
@@ -113,17 +114,17 @@ def par2_repair(base):
 
 def quick_verify(base):
     f = open(base + b'.pack', 'rb')
-    f.seek(-20, 2)
-    wantsum = f.read(20)
-    assert(len(wantsum) == 20)
+    f.seek(-_oid_len, 2)
+    wantsum = f.read(_oid_len)
+    assert(len(wantsum) == _oid_len)
     f.seek(0)
-    sum = Sha1()
-    for b in chunkyreader(f, os.fstat(f.fileno()).st_size - 20):
+    sum = Sha256()
+    for b in chunkyreader(f, os.fstat(f.fileno()).st_size - _oid_len):
         sum.update(b)
     if sum.digest() != wantsum:
         raise ValueError('expected %r, got %r' % (hexlify(wantsum),
                                                   sum.hexdigest()))
-        
+
 
 def git_verify(base):
     if opt.quick:
@@ -135,8 +136,8 @@ def git_verify(base):
         return 0
     else:
         return run([b'git', b'verify-pack', b'--', base])
-    
-    
+
+
 def do_pack(base, last, par2_exists, out):
     code = 0
     if par2_ok and par2_exists and (opt.repair or not opt.generate):
@@ -240,7 +241,7 @@ for name in extra:
           % (last, par2_ok and par2_exists and 'par2' or 'git'))
     if not opt.verbose:
         progress('fsck (%d/%d)\r' % (count, len(extra)))
-    
+
     if not opt.jobs:
         nc = do_pack(base, last, par2_exists, out)
         code = code or nc
@@ -262,7 +263,7 @@ for name in extra:
             except Exception as e:
                 log('exception: %r\n' % e)
                 sys.exit(99)
-                
+
 while len(outstanding):
     (pid,nc) = os.wait()
     nc >>= 8

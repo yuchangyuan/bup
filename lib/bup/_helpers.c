@@ -86,6 +86,8 @@
 #endif
 
 
+#define OID_LEN 32
+
 typedef unsigned char byte;
 
 
@@ -369,9 +371,9 @@ static void unpythonize_argv(void)
 {
     int argc, i;
     char **argv, *arge;
-    
+
     Py_GetArgcArgv(&argc, &argv);
-    
+
     for (i = 0; i < argc-1; i++)
     {
 	if (argv[i] + strlen(argv[i]) + 1 != argv[i+1])
@@ -381,9 +383,9 @@ static void unpythonize_argv(void)
 	    return;
 	}
     }
-    
+
     arge = argv[argc-1] + strlen(argv[argc-1]) + 1;
-    
+
     if (strstr(argv[0], "python") && argv[1] == argv[0] + strlen(argv[0]) + 1)
     {
 	char *p;
@@ -639,7 +641,7 @@ static PyObject *selftest(PyObject *self, PyObject *args)
 {
     if (!PyArg_ParseTuple(args, ""))
 	return NULL;
-    
+
     return Py_BuildValue("i", !bupsplit_selftest());
 }
 
@@ -691,7 +693,7 @@ static PyObject *bitmatch(PyObject *self, PyObject *args)
 
     if (!PyArg_ParseTuple(args, rbuf_argf rbuf_argf, &buf1, &len1, &buf2, &len2))
 	return NULL;
-    
+
     bit = 0;
     for (byte = 0; byte < len1 && byte < len2; byte++)
     {
@@ -704,7 +706,7 @@ static PyObject *bitmatch(PyObject *self, PyObject *args)
 	    break;
 	}
     }
-    
+
     assert(byte <= (INT_MAX >> 3));
     return Py_BuildValue("i", byte*8 + bit);
 }
@@ -718,10 +720,10 @@ static PyObject *firstword(PyObject *self, PyObject *args)
 
     if (!PyArg_ParseTuple(args, rbuf_argf, &buf, &len))
 	return NULL;
-    
+
     if (len < 4)
 	return NULL;
-    
+
     v = ntohl(*(uint32_t *)buf);
     return PyLong_FromUnsignedLong(v);
 }
@@ -793,7 +795,7 @@ static PyObject *bloom_add(PyObject *self, PyObject *args)
 
     PyObject *result = NULL;
 
-    if (bloom.len < 16+(1<<nbits) || sha.len % 20 != 0)
+    if (bloom.len < 16+(1<<nbits) || sha.len % OID_LEN != 0)
         goto clean_and_return;
 
     if (k == 5)
@@ -802,7 +804,7 @@ static PyObject *bloom_add(PyObject *self, PyObject *args)
             goto clean_and_return;
         unsigned char *cur = sha.buf;
         unsigned char *end;
-        for (end = cur + sha.len; cur < end; cur += 20/k)
+        for (end = cur + sha.len; cur < end; cur += OID_LEN/k)
             bloom_set_bit5(bloom.buf, cur, nbits);
     }
     else if (k == 4)
@@ -811,13 +813,13 @@ static PyObject *bloom_add(PyObject *self, PyObject *args)
             goto clean_and_return;
         unsigned char *cur = sha.buf;
         unsigned char *end = cur + sha.len;
-        for (; cur < end; cur += 20/k)
+        for (; cur < end; cur += OID_LEN/k)
             bloom_set_bit4(bloom.buf, cur, nbits);
     }
     else
         goto clean_and_return;
 
-    result = Py_BuildValue("n", sha.len / 20);
+    result = Py_BuildValue("n", sha.len / OID_LEN);
 
  clean_and_return:
     PyBuffer_Release(&bloom);
@@ -837,7 +839,7 @@ static PyObject *bloom_contains(PyObject *self, PyObject *args)
 
     PyObject *result = NULL;
 
-    if (len != 20)
+    if (len != OID_LEN)
         goto clean_and_return;
 
     if (k == 5)
@@ -846,7 +848,7 @@ static PyObject *bloom_contains(PyObject *self, PyObject *args)
             goto clean_and_return;
         int steps;
         unsigned char *end;
-        for (steps = 1, end = sha + 20; sha < end; sha += 20/k, steps++)
+        for (steps = 1, end = sha + OID_LEN; sha < end; sha += OID_LEN/k, steps++)
             if (!bloom_get_bit5(bloom.buf, sha, nbits))
             {
                 result = Py_BuildValue("Oi", Py_None, steps);
@@ -859,7 +861,7 @@ static PyObject *bloom_contains(PyObject *self, PyObject *args)
             goto clean_and_return;
         int steps;
         unsigned char *end;
-        for (steps = 1, end = sha + 20; sha < end; sha += 20/k, steps++)
+        for (steps = 1, end = sha + OID_LEN; sha < end; sha += OID_LEN/k, steps++)
             if (!bloom_get_bit4(bloom.buf, sha, nbits))
             {
                 result = Py_BuildValue("Oi", Py_None, steps);
@@ -896,16 +898,16 @@ static PyObject *extract_bits(PyObject *self, PyObject *args)
 
     if (!PyArg_ParseTuple(args, rbuf_argf "i", &buf, &len, &nbits))
 	return NULL;
-    
+
     if (len < 4)
 	return NULL;
-    
+
     return PyLong_FromUnsignedLong(_extract_bits(buf, nbits));
 }
 
 
 struct sha {
-    unsigned char bytes[20];
+    unsigned char bytes[OID_LEN];
 };
 
 static inline int _cmp_sha(const struct sha *sha1, const struct sha *sha2)
@@ -1155,7 +1157,7 @@ static PyObject *write_idx(PyObject *self, PyObject *args)
 	    ofs = ofs_ull;
 	    if (sha_len != sizeof(struct sha))
                 goto clean_and_return;
-	    memcpy(sha_ptr++, sha, sizeof(struct sha));
+            memcpy(sha_ptr++, sha, sizeof(struct sha));
 	    *crc_ptr++ = htonl(crc);
 	    if (ofs > 0x7fffffff)
 	    {
@@ -1196,9 +1198,9 @@ static PyObject *write_random(PyObject *self, PyObject *args)
 
     if (!PyArg_ParseTuple(args, "iLii", &fd, &len, &seed, &verbose))
 	return NULL;
-    
+
     srandom(seed);
-    
+
     for (kbytes = 0; kbytes < len/1024; kbytes++)
     {
 	unsigned i;
@@ -1213,7 +1215,7 @@ static PyObject *write_random(PyObject *self, PyObject *args)
 	if (verbose && kbytes/1024 > 0 && !(kbytes%1024))
 	    fprintf(stderr, "Random: %lld Mbytes\r", kbytes/1024);
     }
-    
+
     // handle non-multiples of 1024
     if (len % 1024)
     {
@@ -1225,7 +1227,7 @@ static PyObject *write_random(PyObject *self, PyObject *args)
 	    ret = 0;
 	written += ret;
     }
-    
+
     if (kbytes/1024 > 0)
 	fprintf(stderr, "Random: %lld Mbytes, done.\n", kbytes/1024);
     return Py_BuildValue("L", written);
@@ -1235,23 +1237,23 @@ static PyObject *write_random(PyObject *self, PyObject *args)
 static PyObject *random_sha(PyObject *self, PyObject *args)
 {
     static int seeded = 0;
-    uint32_t shabuf[20/4];
+    uint32_t shabuf[OID_LEN/4];
     int i;
-    
+
     if (!seeded)
     {
-	assert(sizeof(shabuf) == 20);
+	assert(sizeof(shabuf) == OID_LEN);
 	srandom((unsigned int) time(NULL));
 	seeded = 1;
     }
-    
+
     if (!PyArg_ParseTuple(args, ""))
 	return NULL;
-    
+
     memset(shabuf, 0, sizeof(shabuf));
-    for (i=0; i < 20/4; i++)
+    for (i=0; i < OID_LEN/4; i++)
 	shabuf[i] = (uint32_t) random();
-    return Py_BuildValue(rbuf_argf, shabuf, 20);
+    return Py_BuildValue(rbuf_argf, shabuf, OID_LEN);
 }
 
 
@@ -1311,7 +1313,7 @@ static PyObject *fadvise_done(PyObject *self, PyObject *args)
                             "fadvise length overflows off_t");
 #ifdef POSIX_FADV_DONTNEED
     posix_fadvise(fd, ofs, len, POSIX_FADV_DONTNEED);
-#endif    
+#endif
     return Py_BuildValue("");
 }
 
@@ -2270,7 +2272,7 @@ static PyMethodDef helper_methods[] = {
     { "write_random", write_random, METH_VARARGS,
 	"Write random bytes to the given file descriptor" },
     { "random_sha", random_sha, METH_VARARGS,
-        "Return a random 20-byte string" },
+        "Return a random 32-byte string" },
     { "open_noatime", open_noatime, METH_VARARGS,
 	"open() the given filename for read with O_NOATIME if possible" },
     { "fadvise_done", fadvise_done, METH_VARARGS,

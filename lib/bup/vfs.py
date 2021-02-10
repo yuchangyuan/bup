@@ -71,6 +71,8 @@ if sys.version_info[0] < 3:
 else:
     py_IOError = IOError
 
+_oid_len = 32
+
 # We currently assume that it's always appropriate to just forward IOErrors
 # to a remote client.
 
@@ -194,7 +196,7 @@ class _ChunkReader:
 
 class _FileReader(object):
     def __init__(self, repo, oid, known_size=None):
-        assert len(oid) == 20
+        assert len(oid) == _oid_len
         self.oid = oid
         self.ofs = 0
         self.reader = None
@@ -205,7 +207,7 @@ class _FileReader(object):
         if not self._size:
             self._size = _normal_or_chunked_file_size(self._repo, self.oid)
         return self._size
-        
+
     def seek(self, ofs):
         if ofs < 0 or ofs > self._compute_size():
             raise IOError(EINVAL, 'Invalid seek offset: %d' % ofs)
@@ -264,7 +266,7 @@ def _decompose_path(path):
     if not parts:
         must_be_dir = True  # e.g. path was effectively '.' or '/', etc.
     return is_absolute, must_be_dir, parts
-    
+
 
 Item = namedtuple('Item', ('meta', 'oid'))
 Chunky = namedtuple('Chunky', ('meta', 'oid'))
@@ -283,7 +285,7 @@ def write_item(port, item):
     meta = item.meta
     has_meta = 1 if isinstance(meta, Metadata) else 0
     if kind in (Item, Chunky, RevList):
-        assert len(item.oid) == 20
+        assert len(item.oid) == _oid_len
         if has_meta:
             vint.send(port, 'sVs', name, has_meta, item.oid)
             Metadata.write(meta, port, include_path=False)
@@ -296,8 +298,8 @@ def write_item(port, item):
         else:
             vint.send(port, 'sVV', name, has_meta, item.meta)
     elif kind == Commit:
-        assert len(item.oid) == 20
-        assert len(item.coid) == 20
+        assert len(item.oid) == _oid_len
+        assert len(item.coid) == _oid_len
         if has_meta:
             vint.send(port, 'sVss', name, has_meta, item.oid, item.coid)
             Metadata.write(meta, port, include_path=False)
@@ -395,7 +397,7 @@ def is_valid_cache_key(x):
     x_t = type(x)
     if x_t is bytes:
         tag = x[:4]
-        if tag in (b'itm:', b'rvl:') and len(x) == 24:
+        if tag in (b'itm:', b'rvl:') and len(x) == 4 + _oid_len:
             return True
         if tag == b'res:':
             return True
@@ -470,8 +472,8 @@ def tree_data_and_bupm(repo, oid):
     """Return (tree_bytes, bupm_oid) where bupm_oid will be None if the
     tree has no metadata (i.e. older bup save, or non-bup tree).
 
-    """    
-    assert len(oid) == 20
+    """
+    assert len(oid) == _oid_len
     it = repo.cat(hexlify(oid))
     _, item_t, size = next(it)
     data = b''.join(it)
@@ -629,7 +631,7 @@ def ordered_tree_entries(tree_data, bupm=None):
         tree_ents = sorted(tree_ents, key=lambda x: x[0])
     for ent in tree_ents:
         yield ent
-    
+
 def tree_items(oid, tree_data, names=frozenset(), bupm=None):
 
     def tree_item(ent_oid, kind, gitmode):
@@ -648,7 +650,7 @@ def tree_items(oid, tree_data, names=frozenset(), bupm=None):
             meta = _default_mode_for_gitmode(gitmode)
         return Item(oid=ent_oid, meta=meta)
 
-    assert len(oid) == 20
+    assert len(oid) == _oid_len
     if not names:
         dot_meta = _read_dir_meta(bupm) if bupm else default_dir_mode
         yield b'.', Item(oid=oid, meta=dot_meta)
@@ -696,7 +698,7 @@ def tree_items_with_meta(repo, oid, tree_data, names):
     # For now, the .bupm order doesn't quite match git's, and we don't
     # load the tree data incrementally anyway, so we just work in RAM
     # via tree_data.
-    assert len(oid) == 20
+    assert len(oid) == _oid_len
     bupm = None
     for _, mangled_name, sub_oid in tree_decode(tree_data):
         if mangled_name == b'.bupm':
@@ -708,7 +710,7 @@ def tree_items_with_meta(repo, oid, tree_data, names):
         yield item
 
 _save_name_rx = re.compile(br'^\d\d\d\d-\d\d-\d\d-\d{6}(-\d+)?$')
-        
+
 def _reverse_suffix_duplicates(strs):
     """Yields the elements of strs, with any runs of duplicate values
     suffixed with -N suffixes, where the zero padded integer N
@@ -771,7 +773,7 @@ def cache_commit(repo, oid):
     return entries
 
 def revlist_items(repo, oid, names):
-    assert len(oid) == 20
+    assert len(oid) == _oid_len
 
     # Special case '.' instead of caching the whole history since it's
     # the only way to get the metadata for the commit.
@@ -805,7 +807,7 @@ def tags_items(repo, names):
     global _tags
 
     def tag_item(oid):
-        assert len(oid) == 20
+        assert len(oid) == _oid_len
         oidx = hexlify(oid)
         it = repo.cat(oidx)
         _, typ, size = next(it)
@@ -1014,7 +1016,7 @@ def _resolve_path(repo, path, parent=None, want_meta=True, follow=True):
                 else:
                     future.extend(target_future)
                 hops += 1
-                
+
 def resolve(repo, path, parent=None, want_meta=True, follow=True):
     """Follow the path in the virtual filesystem and return a tuple
     representing the location, if any, denoted by the path.  Each

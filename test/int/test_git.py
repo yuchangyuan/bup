@@ -262,7 +262,7 @@ def test_commit_parsing(tmpdir):
     environ[b'GIT_AUTHOR_EMAIL'] = b'bup@a425bc70a02811e49bdf73ee56450e6f'
     environ[b'GIT_COMMITTER_EMAIL'] = environ[b'GIT_AUTHOR_EMAIL']
     try:
-        readpipe([b'git', b'init', workdir])
+        readpipe([b'git', b'init', b'--object-format=sha256', workdir])
         environ[b'GIT_DIR'] = environ[b'BUP_DIR'] = repodir
         git.check_repo_or_die(repodir)
         os.chdir(workdir)

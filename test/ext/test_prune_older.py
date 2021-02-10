@@ -157,7 +157,7 @@ def test_prune_older(tmpdir):
     now = int(time())
     three_years_ago = now - (60 * 60 * 24 * 366 * 3)
     chdir(tmpdir)
-    ex([b'git', b'init', b'work'])
+    ex([b'git', b'init', b'--object-format=sha256', b'work'])
     ex([b'git', b'config', b'gc.autoDetach', b'false'])
 
     wvstart('generating ' + str(save_population) + ' random saves')

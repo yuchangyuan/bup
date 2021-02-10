@@ -11,6 +11,9 @@ from bup.helpers import (add_error, log, merge_iter, mmap_readwrite,
 EMPTY_SHA = b'\0' * 20
 FAKE_SHA = b'\x01' * 20
 
+EMPTY_SHA256 = b'\0' * 32
+FAKE_SHA256 = b'\x01' * 32
+
 INDEX_HDR = b'BUPI\0\0\0\7'
 
 # Time values are handled as integer nanoseconds since the epoch in
@@ -127,7 +130,7 @@ class Level:
         (ofs,n) = (f.tell(), len(self.list))
         if self.list:
             count = len(self.list)
-            #log('popping %r with %d entries\n' 
+            #log('popping %r with %d entries\n'
             #    % (''.join(self.ename), count))
             for e in self.list:
                 e.write(f)
@@ -205,7 +208,7 @@ class Entry:
             return True
         if self.mtime != st.st_mtime:
             return True
-        if self.sha == EMPTY_SHA:
+        if self.sha == EMPTY_SHA256:
             return True
         if not self.gitmode:
             return True
@@ -333,7 +336,7 @@ class BlankNewEntry(NewEntry):
     def __init__(self, basename, meta_ofs, tmax):
         NewEntry.__init__(self, basename, basename, tmax,
                           0, 0, 0, 0, 0, 0, 0, 0,
-                          0, EMPTY_SHA, 0, meta_ofs, 0, 0)
+                          0, EMPTY_SHA256, 0, meta_ofs, 0, 0)
 
 
 class ExistingEntry(Entry):
@@ -402,7 +405,7 @@ class ExistingEntry(Entry):
 
     def __iter__(self):
         return self.iter()
-            
+
 
 class Reader:
     def __init__(self, filename):
@@ -557,7 +560,7 @@ class Writer:
 
     def _add(self, ename, entry):
         if self.lastfile and self.lastfile <= ename:
-            raise Error('%r must come before %r' 
+            raise Error('%r must come before %r'
                              % (''.join(ename), ''.join(self.lastfile)))
         self.lastfile = ename
         self.level = _golevel(self.level, self.f, ename, entry,
@@ -574,7 +577,7 @@ class Writer:
             (gitmode, sha) = hashgen(name)
             flags |= IX_HASHVALID
         else:
-            (gitmode, sha) = (0, EMPTY_SHA)
+            (gitmode, sha) = (0, EMPTY_SHA256)
         if st:
             isdir = stat.S_ISDIR(st.st_mode)
             assert(isdir == endswith)
@@ -634,7 +637,7 @@ def reduce_paths(paths):
     paths = []
     prev = None
     for (rp, p) in xpaths:
-        if prev and (prev == rp 
+        if prev and (prev == rp
                      or (prev.endswith(b'/') and rp.startswith(prev))):
             continue # already superceded by previous path
         paths.append((rp, p))

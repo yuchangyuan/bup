@@ -34,6 +34,8 @@ ignore-midx  Don't use midx files; use only plain pack idx files.
 o = options.Options(optspec)
 opt, flags, extra = o.parse(compat.argv[1:])
 
+_oid_len = 32
+
 if extra:
     o.fatal("no arguments expected")
 
@@ -65,7 +67,7 @@ if opt.predict:
         do_predict(mi, out)
 else:
     # default mode: find longest matching prefix
-    last = b'\0'*20
+    last = b'\0'*_oid_len
     longmatch = 0
     for i in mi:
         if i == last:
@@ -79,7 +81,7 @@ else:
     doublings = math.log(len(mi), 2)
     bpd = longmatch / doublings
     log('%.2f bits per doubling\n' % bpd)
-    remain = 160 - longmatch
+    remain = 8 * _oid_len - longmatch
     rdoublings = remain / bpd
     log('%d bits (%.2f doublings) remaining\n' % (remain, rdoublings))
     larger = 2**rdoublings

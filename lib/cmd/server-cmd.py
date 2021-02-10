@@ -33,6 +33,8 @@ suspended_w = None
 dumb_server_mode = False
 repo = None
 
+_oid_len = 32
+
 def do_help(conn, junk):
     conn.write(b'Commands:\n    %s\n' % b'\n    '.join(sorted(commands)))
     conn.ok()
@@ -41,7 +43,7 @@ def do_help(conn, junk):
 def _set_mode():
     global dumb_server_mode
     dumb_server_mode = os.path.exists(git.repo(b'bup-dumb-server'))
-    debug1('bup server: serving in %s mode\n' 
+    debug1('bup server: serving in %s mode\n'
            % (dumb_server_mode and 'dumb' or 'smart'))
 
 
@@ -73,7 +75,7 @@ def set_dir(conn, arg):
     _init_session(arg)
     conn.ok()
 
-    
+
 def list_indexes(conn, junk):
     _init_session()
     suffix = b''
@@ -115,7 +117,7 @@ def receive_objects_v2(conn, junk):
         n = struct.unpack('!I', ns)[0]
         #debug2('expecting %d bytes\n' % n)
         if not n:
-            debug1('bup server: received %d object%s.\n' 
+            debug1('bup server: received %d object%s.\n'
                 % (w.count, w.count!=1 and "s" or ''))
             fullpath = w.close(run_midx=not dumb_server_mode)
             if fullpath:
@@ -128,10 +130,10 @@ def receive_objects_v2(conn, junk):
             suspended_w = w
             conn.ok()
             return
-            
-        shar = conn.read(20)
+
+        shar = conn.read(_oid_len)
         crcr = struct.unpack('!I', conn.read(4))[0]
-        n -= 20 + 4
+        n -= _oid_len + 4
         buf = conn.read(n)  # object sizes in bup are reasonably small
         #debug2('read %d bytes\n' % n)
         _check(w, n, len(buf), 'object read: expected %d bytes, got %d\n')
@@ -152,7 +154,7 @@ def receive_objects_v2(conn, junk):
         nw, crc = w._raw_write((buf,), sha=shar)
         _check(w, crcr, crc, 'object read: expected crc %d, got %d\n')
     # NOTREACHED
-    
+
 
 def _check(w, expected, actual, msg):
     if expected != actual:

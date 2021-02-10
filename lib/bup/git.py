@@ -19,7 +19,7 @@ from bup.compat import (buffer,
                         range,
                         reraise)
 from bup.io import path_msg
-from bup.helpers import (Sha1, add_error, chunkyreader, debug1, debug2,
+from bup.helpers import (Sha256, add_error, chunkyreader, debug1, debug2,
                          exo,
                          fdatasync,
                          hostname, localtime, log,
@@ -43,6 +43,7 @@ _typermap = {v: k for k, v in items(_typemap)}
 _total_searches = 0
 _total_steps = 0
 
+_oid_len = 32 # 20
 
 class GitError(Exception):
     pass
@@ -95,19 +96,19 @@ _safe_str_rx = br'(?:%s{1,2}|(?:%s%s*%s))' \
     % (_start_end_char,
        _start_end_char, _content_char, _start_end_char)
 _tz_rx = br'[-+]\d\d[0-5]\d'
-_parent_rx = br'(?:parent [abcdefABCDEF0123456789]{40}\n)'
+_parent_rx = br'(?:parent [abcdefABCDEF0123456789]{%d}\n)' % (2 * _oid_len)
 # Assumes every following line starting with a space is part of the
 # mergetag.  Is there a formal commit blob spec?
-_mergetag_rx = br'(?:\nmergetag object [abcdefABCDEF0123456789]{40}(?:\n [^\0\n]*)*)'
-_commit_rx = re.compile(br'''tree (?P<tree>[abcdefABCDEF0123456789]{40})
+_mergetag_rx = br'(?:\nmergetag object [abcdefABCDEF0123456789]{%d}(?:\n [^\0\n]*)*)' % (2 * _oid_len)
+_commit_rx = re.compile(br'''tree (?P<tree>[abcdefABCDEF0123456789]{%d})
 (?P<parents>%s*)author (?P<author_name>%s) <(?P<author_mail>%s)> (?P<asec>\d+) (?P<atz>%s)
 committer (?P<committer_name>%s) <(?P<committer_mail>%s)> (?P<csec>\d+) (?P<ctz>%s)(?P<mergetag>%s?)
 
-(?P<message>(?:.|\n)*)''' % (_parent_rx,
+(?P<message>(?:.|\n)*)''' % (_oid_len * 2, _parent_rx,
                              _safe_str_rx, _safe_str_rx, _tz_rx,
                              _safe_str_rx, _safe_str_rx, _tz_rx,
                              _mergetag_rx))
-_parent_hash_rx = re.compile(br'\s*parent ([abcdefABCDEF0123456789]{40})\s*')
+_parent_hash_rx = re.compile(br'\s*parent ([abcdefABCDEF0123456789]{%d})\s*' % (_oid_len * 2))
 
 # Note that the author_sec and committer_sec values are (UTC) epoch
 # seconds, and for now the mergetag is not included.
@@ -260,7 +261,7 @@ def demangle_name(name, mode):
 def calc_hash(type, content):
     """Calculate some content's hash in the Git fashion."""
     header = b'%s %d\0' % (type, len(content))
-    sum = Sha1(header)
+    sum = Sha256(header)
     sum.update(content)
     return sum.digest()
 
@@ -282,7 +283,7 @@ def tree_encode(shalist):
         assert(mode)
         assert(mode+0 == mode)
         assert(name)
-        assert(len(bin) == 20)
+        assert(len(bin) == _oid_len)
         s = b'%o %s\0%s' % (mode,name,bin)
         assert s[0] != b'0'  # 0-padded octal is not acceptable in a git tree
         l.append(s)
@@ -298,8 +299,8 @@ def tree_decode(buf):
         spl = buf[ofs:z].split(b' ', 1)
         assert(len(spl) == 2)
         mode,name = spl
-        sha = buf[z+1:z+1+20]
-        ofs = z+1+20
+        sha = buf[z+1:z+1+_oid_len]
+        ofs = z+1+_oid_len
         yield (int(mode, 8), name, sha)
 
 
@@ -381,7 +382,7 @@ class PackIdx:
     def _idx_from_hash(self, hash):
         global _total_searches, _total_steps
         _total_searches += 1
-        assert(len(hash) == 20)
+        assert(len(hash) == _oid_len)
         b1 = byte_int(hash[0])
         start = self.fanout[b1-1] # range -1..254
         end = self.fanout[b1] # range 0..255
@@ -426,19 +427,19 @@ class PackIdxV1(PackIdx):
     def _ofs_from_idx(self, idx):
         if idx >= self.nsha or idx < 0:
             raise IndexError('invalid pack index index %d' % idx)
-        ofs = self.sha_ofs + idx * 24
+        ofs = self.sha_ofs + idx * (4 + _oid_len)
         return struct.unpack_from('!I', self.map, offset=ofs)[0]
 
     def _idx_to_hash(self, idx):
         if idx >= self.nsha or idx < 0:
             raise IndexError('invalid pack index index %d' % idx)
-        ofs = self.sha_ofs + idx * 24 + 4
-        return self.map[ofs : ofs + 20]
+        ofs = self.sha_ofs + idx * (4 + _oid_len) + 4
+        return self.map[ofs : ofs + _oid_len]
 
     def __iter__(self):
         start = self.sha_ofs + 4
-        for ofs in range(start, start + 24 * self.nsha, 24):
-            yield self.map[ofs : ofs + 20]
+        for ofs in range(start, start + (4 + _oid_len) * self.nsha, 4 + _oid_len):
+            yield self.map[ofs : ofs + _oid_len]
 
     def close(self):
         if self.map is not None:
@@ -459,10 +460,10 @@ class PackIdxV2(PackIdx):
         self.fanout.append(0)
         self.nsha = self.fanout[255]
         self.sha_ofs = 8 + 256*4
-        self.ofstable_ofs = self.sha_ofs + self.nsha * 20 + self.nsha * 4
+        self.ofstable_ofs = self.sha_ofs + self.nsha * _oid_len + self.nsha * 4
         self.ofs64table_ofs = self.ofstable_ofs + self.nsha * 4
         # Avoid slicing this for individual hashes (very high overhead)
-        self.shatable = buffer(self.map, self.sha_ofs, self.nsha*20)
+        self.shatable = buffer(self.map, self.sha_ofs, self.nsha*_oid_len)
 
     def __enter__(self):
         return self
@@ -487,13 +488,13 @@ class PackIdxV2(PackIdx):
     def _idx_to_hash(self, idx):
         if idx >= self.nsha or idx < 0:
             raise IndexError('invalid pack index index %d' % idx)
-        ofs = self.sha_ofs + idx * 20
-        return self.map[ofs : ofs + 20]
+        ofs = self.sha_ofs + idx * _oid_len
+        return self.map[ofs : ofs + _oid_len]
 
     def __iter__(self):
         start = self.sha_ofs
-        for ofs in range(start, start + 20 * self.nsha, 20):
-            yield self.map[ofs : ofs + 20]
+        for ofs in range(start, start + _oid_len * self.nsha, _oid_len):
+            yield self.map[ofs : ofs + _oid_len]
 
     def close(self):
         if self.map is not None:
@@ -885,7 +886,7 @@ class PackWriter:
 
             # calculate the pack sha1sum
             f.seek(0)
-            sum = Sha1()
+            sum = Sha256()
             for b in chunkyreader(f):
                 sum.update(b)
             packbin = sum.digest()
@@ -937,7 +938,7 @@ class PackIdxV2Writer:
                     ofs64_count += 1
 
         # Length: header + fan-out + shas-and-crcs + overflow-offsets
-        index_len = 8 + (4 * 256) + (28 * self.count) + (8 * ofs64_count)
+        index_len = 8 + (4 * 256) + ((_oid_len + 8) * self.count) + (8 * ofs64_count)
         idx_map = None
         idx_f = open(filename, 'w+b')
         try:
@@ -958,12 +959,12 @@ class PackIdxV2Writer:
         try:
             idx_f.write(packbin)
             idx_f.seek(0)
-            idx_sum = Sha1()
+            idx_sum = Sha256()
             b = idx_f.read(8 + 4*256)
             idx_sum.update(b)
 
-            obj_list_sum = Sha1()
-            for b in chunkyreader(idx_f, 20 * self.count):
+            obj_list_sum = Sha256()
+            for b in chunkyreader(idx_f, _oid_len * self.count):
                 idx_sum.update(b)
                 obj_list_sum.update(b)
             namebase = hexlify(obj_list_sum.digest())
@@ -1056,7 +1057,7 @@ def rev_list(ref_or_refs, parse=None, format=None, repo_dir=None):
             if not s.startswith(b'commit '):
                 raise Exception('unexpected line ' + repr(s))
             s = s[7:]
-            assert len(s) == 40
+            assert len(s) == _oid_len * 2
             yield s, parse(p.stdout)
             line = p.stdout.readline()
 
@@ -1091,7 +1092,7 @@ def rev_parse(committish, repo_dir=None):
 
     pL = PackIdxList(repo(b'objects/pack', repo_dir=repo_dir))
 
-    if len(committish) == 40:
+    if len(committish) == 2 * _oid_len:
         try:
             hash = unhexlify(committish)
         except TypeError:
@@ -1150,7 +1151,7 @@ def init_repo(path=None):
                        % path_msg(parent))
     if os.path.exists(d) and not os.path.isdir(os.path.join(d, b'.')):
         raise GitError('"%s" exists but is not a directory\n' % path_msg(d))
-    p = subprocess.Popen([b'git', b'--bare', b'init'], stdout=sys.stderr,
+    p = subprocess.Popen([b'git', b'--bare', b'init', b'--object-format=sha256'], stdout=sys.stderr,
                          env=_gitenv())
     _git_wait('git init', p)
     # Force the index version configuration in order to ensure bup works
@@ -1311,7 +1312,7 @@ class CatPipe:
             yield None, None, None
             return
         info = hdr.split(b' ')
-        if len(info) != 3 or len(info[0]) != 40:
+        if len(info) != 3 or len(info[0]) != _oid_len * 2:
             raise GitError('expected object (id, type, size), got %r' % info)
         oidx, typ, size = info
         size = int(size)

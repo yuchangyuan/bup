@@ -40,6 +40,8 @@ except ImportError:
     sys.exit(1)
 
 
+_oid_len = 32
+
 # FIXME: right now the way hidden files are handled causes every
 # directory to be traversed twice.
 
@@ -108,7 +110,7 @@ def _dir_contents(repo, resolution, show_hidden=False):
 
         return display_name, link + url_query, display_size
 
-    dir_item = resolution[-1][1]    
+    dir_item = resolution[-1][1]
     for name, item in vfs.contents(repo, dir_item):
         if not show_hidden:
             if (name not in (b'.', b'..')) and name.startswith(b'.'):
@@ -137,7 +139,7 @@ class BupRequestHandler(tornado.web.RequestHandler):
 
     def head(self, path):
         return self._process_request(path)
-    
+
     def _process_request(self, path):
         print('Handling request for %s' % path)
         sys.stdout.flush()
@@ -192,9 +194,9 @@ class BupRequestHandler(tornado.web.RequestHandler):
         ctype = self._guess_type(path)
         self.set_header("Last-Modified", http_date_from_utc_ns(meta.mtime))
         self.set_header("Content-Type", ctype)
-        
+
         self.set_header("Content-Length", str(meta.size))
-        assert len(file_item.oid) == 20
+        assert len(file_item.oid) == _oid_len
         self.set_header("Etag", hexlify(file_item.oid))
         if self.request.method != 'HEAD':
             with vfs.fopen(self.repo, file_item) as f:
