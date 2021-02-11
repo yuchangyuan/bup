@@ -12,6 +12,7 @@ from bup import git, path
 from bup.compat import bytes_from_byte, environ, range
 from bup.helpers import localtime, log, mkdirp, readpipe
 
+_oid_len = 32
 
 bup_exe = path.exe()
 
@@ -146,18 +147,18 @@ def test_packs(tmpdir):
     for i in range(nobj):
         WVPASS(r.find_offset(hashes[i]) > 0)
     WVPASS(r.exists(hashes[99]))
-    WVFAIL(r.exists(b'\0'*20))
+    WVFAIL(r.exists(b'\0'*_oid_len))
 
     pi = iter(r)
     for h in sorted(hashes):
         WVPASSEQ(hexlify(next(pi)), hexlify(h))
 
-    WVFAIL(r.find_offset(b'\0'*20))
+    WVFAIL(r.find_offset(b'\0'*_oid_len))
 
     r = git.PackIdxList(bupdir + b'/objects/pack')
     WVPASS(r.exists(hashes[5]))
     WVPASS(r.exists(hashes[6]))
-    WVFAIL(r.exists(b'\0'*20))
+    WVFAIL(r.exists(b'\0'*_oid_len))
 
 
 def test_pack_name_lookup(tmpdir):
@@ -317,8 +318,8 @@ def test_new_commit(tmpdir):
     git.verbose = 1
 
     w = git.PackWriter()
-    tree = os.urandom(20)
-    parent = os.urandom(20)
+    tree = os.urandom(_oid_len)
+    parent = os.urandom(_oid_len)
     author_name = b'Author'
     author_mail = b'author@somewhere'
     adate_sec = 1439657836

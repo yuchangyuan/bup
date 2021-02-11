@@ -25,6 +25,8 @@ from bup.compat import argv_bytes
 from bup.helpers import add_error, handle_ctrl_c, log, qprogress, saved_errors
 from bup.io import byte_stream
 
+_oid_len = 32
+
 optspec = """
 bup list-idx [--find=<prefix>] <idxfilenames...>
 --
@@ -40,8 +42,8 @@ opt.find = argv_bytes(opt.find) if opt.find else b''
 if not extra:
     o.fatal('you must provide at least one filename')
 
-if len(opt.find) > 40:
-    o.fatal('--find parameter must be <= 40 chars long')
+if len(opt.find) > _oid_len * 2:
+    o.fatal('--find parameter must be <= %d chars long' % (2 * _oid_len))
 else:
     if len(opt.find) % 2:
         s = opt.find + b'0'
@@ -63,7 +65,7 @@ for name in idxfiles:
     except git.GitError as e:
         add_error('%r: %s' % (name, e))
         continue
-    if len(opt.find) == 40:
+    if len(opt.find) == 2 * _oid_len:
         if ix.exists(bin):
             out.write(b'%s %s\n' % (name, find))
     else:

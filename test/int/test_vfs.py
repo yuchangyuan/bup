@@ -24,6 +24,8 @@ from bup.repo import LocalRepo
 from buptest import ex, exo
 from buptest.vfs import tree_dict
 
+_oid_len = 32
+
 lib_t_dir = os.path.dirname(fsencode(__file__))
 top_dir = os.path.join(lib_t_dir, b'../..')
 bup_path = top_dir + b'/bup'
@@ -46,9 +48,9 @@ def test_cache_behavior():
         wvpasseq([], vfs._cache_keys)
         wvfail(vfs._cache_keys)
         wvexcept(Exception, vfs.cache_notice, b'x', 1)
-        key_0 = b'itm:' + b'\0' * 20
-        key_1 = b'itm:' + b'\1' * 20
-        key_2 = b'itm:' + b'\2' * 20
+        key_0 = b'itm:' + b'\0' * _oid_len
+        key_1 = b'itm:' + b'\1' * _oid_len
+        key_2 = b'itm:' + b'\2' * _oid_len
         vfs.cache_notice(key_0, b'something')
         wvpasseq({key_0 : b'something'}, vfs._cache)
         wvpasseq([key_0], vfs._cache_keys)
@@ -135,7 +137,7 @@ def run_augment_item_meta_tests(repo,
 def test_item_mode():
     mode = S_IFDIR | 0o755
     meta = metadata.from_path(b'.')
-    oid = b'\0' * 20
+    oid = b'\0' * _oid_len
     wvpasseq(mode, vfs.item_mode(vfs.Item(oid=oid, meta=mode)))
     wvpasseq(meta.mode, vfs.item_mode(vfs.Item(oid=oid, meta=meta)))
 

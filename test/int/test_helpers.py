@@ -14,6 +14,8 @@ from bup.helpers import (atomically_replaced_file, batchpipe, detect_fakeroot,
                          utc_offset_str)
 import bup._helpers as _helpers
 
+_oid_len = 32
+
 
 def test_parse_num():
     pn = parse_num
@@ -166,7 +168,7 @@ def test_atomically_replaced_file(tmpdir):
         WVPASSEQ(f.read(), 'asdf')
 
     with atomically_replaced_file(target_file, mode='wb') as f:
-        f.write(os.urandom(20))
+        f.write(os.urandom(_oid_len))
         WVPASSEQ(f.mode, 'wb')
 
 
@@ -222,7 +224,7 @@ def test_valid_save_name():
     WVFAIL(valid(b'foo@{'))
     for x in b' ~^:?*[\\':
         WVFAIL(valid(b'foo' + bytes_from_byte(x)))
-    for i in range(20):
+    for i in range(_oid_len):
         WVFAIL(valid(b'foo' + bytes_from_uint(i)))
     WVFAIL(valid(b'foo' + bytes_from_uint(0x7f)))
     WVFAIL(valid(b'foo..bar'))
