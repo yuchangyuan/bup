@@ -8,11 +8,11 @@ from bup.compat import range
 from bup.helpers import (add_error, log, merge_iter, mmap_readwrite,
                          progress, qprogress, resolve_parent, slashappend)
 
-EMPTY_SHA = b'\0' * 20
-FAKE_SHA = b'\x01' * 20
 
-EMPTY_SHA256 = b'\0' * 32
-FAKE_SHA256 = b'\x01' * 32
+_oid_len = 32
+
+EMPTY_SHA = b'\0' * _oid_len
+FAKE_SHA = b'\x01' * _oid_len
 
 INDEX_HDR = b'BUPI\0\0\0\7'
 
@@ -33,11 +33,11 @@ INDEX_SIG = ('!'
              'Q'                # size
              'I'                # mode
              'I'                # gitmode
-             '20s'              # sha
+             '%ds'              # sha
              'H'                # flags
              'Q'                # children_ofs
              'I'                # children_n
-             'Q')               # meta_ofs
+             'Q') % (_oid_len)  # meta_ofs
 
 ENTLEN = struct.calcsize(INDEX_SIG)
 FOOTER_SIG = '!Q'
@@ -208,7 +208,7 @@ class Entry:
             return True
         if self.mtime != st.st_mtime:
             return True
-        if self.sha == EMPTY_SHA256:
+        if self.sha == EMPTY_SHA:
             return True
         if not self.gitmode:
             return True
@@ -336,7 +336,7 @@ class BlankNewEntry(NewEntry):
     def __init__(self, basename, meta_ofs, tmax):
         NewEntry.__init__(self, basename, basename, tmax,
                           0, 0, 0, 0, 0, 0, 0, 0,
-                          0, EMPTY_SHA256, 0, meta_ofs, 0, 0)
+                          0, EMPTY_SHA, 0, meta_ofs, 0, 0)
 
 
 class ExistingEntry(Entry):
@@ -577,7 +577,7 @@ class Writer:
             (gitmode, sha) = hashgen(name)
             flags |= IX_HASHVALID
         else:
-            (gitmode, sha) = (0, EMPTY_SHA256)
+            (gitmode, sha) = (0, EMPTY_SHA)
         if st:
             isdir = stat.S_ISDIR(st.st_mode)
             assert(isdir == endswith)

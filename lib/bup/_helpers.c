@@ -800,7 +800,7 @@ static PyObject *bloom_add(PyObject *self, PyObject *args)
 
     if (k == 5)
     {
-        if (nbits > 29)
+        if (nbits > 49)
             goto clean_and_return;
         unsigned char *cur = sha.buf;
         unsigned char *end;
@@ -809,7 +809,7 @@ static PyObject *bloom_add(PyObject *self, PyObject *args)
     }
     else if (k == 4)
     {
-        if (nbits > 37)
+        if (nbits > 61)
             goto clean_and_return;
         unsigned char *cur = sha.buf;
         unsigned char *end = cur + sha.len;
@@ -844,7 +844,7 @@ static PyObject *bloom_contains(PyObject *self, PyObject *args)
 
     if (k == 5)
     {
-        if (nbits > 29)
+        if (nbits > 49)
             goto clean_and_return;
         int steps;
         unsigned char *end;
@@ -857,7 +857,7 @@ static PyObject *bloom_contains(PyObject *self, PyObject *args)
     }
     else if (k == 4)
     {
-        if (nbits > 37)
+        if (nbits > 61)
             goto clean_and_return;
         int steps;
         unsigned char *end;

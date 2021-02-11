@@ -90,7 +90,7 @@ from bup.helpers import (debug1, debug2, log, mmap_read, mmap_readwrite,
 
 BLOOM_VERSION = 2
 MAX_BITS_EACH = 32 # Kinda arbitrary, but 4 bytes per entry is pretty big
-MAX_BLOOM_BITS = {4: 37, 5: 29} # 160/k-log2(8)
+MAX_BLOOM_BITS = {4: 61, 5: 49} # 256/k-log2(8)
 MAX_PFALSE_POSITIVE = 1. # Totally arbitrary, needs benchmarking
 
 _total_searches = 0
@@ -148,7 +148,7 @@ class ShaBloom:
             return self._init_failed()
         ver = struct.unpack('!I', self.map[4:8])[0]
         if ver < BLOOM_VERSION:
-            log('Warning: ignoring old-style (v%d) bloom %r\n' 
+            log('Warning: ignoring old-style (v%d) bloom %r\n'
                 % (ver, filename))
             return self._init_failed()
         if ver > BLOOM_VERSION:
