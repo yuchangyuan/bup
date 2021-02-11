@@ -736,28 +736,28 @@ static void to_bloom_address_bitmask4(const unsigned char *buf,
 {
     int bit;
     uint32_t high;
+    uint64_t raw, mask; // NOTE: here 64 >= 2 * OID_LEN
+
+    memcpy(&high, buf, 4);
+    mask = (1<<nbits) - 1;
+    raw = (((uint64_t)ntohl(high) << 8) | buf[4]);
+    bit = (raw >> (61-nbits)) & 0x7;
+    *v = (raw >> (64-nbits)) & mask;
+    *bitmask = 1 << bit;
+}
+
+static void to_bloom_address_bitmask5(const unsigned char *buf,
+	const int nbits, uint64_t *v, unsigned char *bitmask)
+{
+    int bit;
+    uint32_t high;
     uint64_t raw, mask;
 
     memcpy(&high, buf, 4);
     mask = (1<<nbits) - 1;
     raw = (((uint64_t)ntohl(high) << 8) | buf[4]);
-    bit = (raw >> (37-nbits)) & 0x7;
-    *v = (raw >> (40-nbits)) & mask;
-    *bitmask = 1 << bit;
-}
-
-static void to_bloom_address_bitmask5(const unsigned char *buf,
-	const int nbits, uint32_t *v, unsigned char *bitmask)
-{
-    int bit;
-    uint32_t high;
-    uint32_t raw, mask;
-
-    memcpy(&high, buf, 4);
-    mask = (1<<nbits) - 1;
-    raw = ntohl(high);
-    bit = (raw >> (29-nbits)) & 0x7;
-    *v = (raw >> (32-nbits)) & mask;
+    bit = (raw >> (49-nbits)) & 0x7;
+    *v = (raw >> (52-nbits)) & mask;
     *bitmask = 1 << bit;
 }
 
@@ -770,7 +770,7 @@ static void name(unsigned char *bloom, const unsigned char *buf, const int nbits
     bloom[BLOOM2_HEADERLEN+v] |= bitmask;\
 }
 BLOOM_SET_BIT(bloom_set_bit4, to_bloom_address_bitmask4, uint64_t)
-BLOOM_SET_BIT(bloom_set_bit5, to_bloom_address_bitmask5, uint32_t)
+BLOOM_SET_BIT(bloom_set_bit5, to_bloom_address_bitmask5, uint64_t)
 
 
 #define BLOOM_GET_BIT(name, address, otype) \
@@ -782,7 +782,7 @@ static int name(const unsigned char *bloom, const unsigned char *buf, const int 
     return bloom[BLOOM2_HEADERLEN+v] & bitmask;\
 }
 BLOOM_GET_BIT(bloom_get_bit4, to_bloom_address_bitmask4, uint64_t)
-BLOOM_GET_BIT(bloom_get_bit5, to_bloom_address_bitmask5, uint32_t)
+BLOOM_GET_BIT(bloom_get_bit5, to_bloom_address_bitmask5, uint64_t)
 
 
 static PyObject *bloom_add(PyObject *self, PyObject *args)
