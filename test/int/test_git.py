@@ -188,14 +188,19 @@ def test_long_index(tmpdir):
     environ[b'BUP_DIR'] = bupdir = tmpdir + b'/bup'
     git.init_repo(bupdir)
     idx = git.PackIdxV2Writer()
-    obj_bin = struct.pack('!IIIII',
-            0x00112233, 0x44556677, 0x88990011, 0x22334455, 0x66778899)
-    obj2_bin = struct.pack('!IIIII',
-            0x11223344, 0x55667788, 0x99001122, 0x33445566, 0x77889900)
-    obj3_bin = struct.pack('!IIIII',
-            0x22334455, 0x66778899, 0x00112233, 0x44556677, 0x88990011)
-    pack_bin = struct.pack('!IIIII',
-            0x99887766, 0x55443322, 0x11009988, 0x77665544, 0x33221100)
+    # NOTE, all bin should 32byte, not 20byte
+    obj_bin = struct.pack('!IIIIIIII',
+                          0x00112233, 0x44556677, 0x88990011, 0x22334455, 0x66778899,
+                          0xaabbccdd, 0xeeff0011, 0x22334455)
+    obj2_bin = struct.pack('!IIIIIIII',
+                           0x11223344, 0x55667788, 0x99001122, 0x33445566, 0x77889900,
+                           0xaabbccdd, 0xeeff0011, 0x22334455)
+    obj3_bin = struct.pack('!IIIIIIII',
+                           0x22334455, 0x66778899, 0x00112233, 0x44556677, 0x88990011,
+                           0xaabbccdd, 0xeeff0011, 0x22334455)
+    pack_bin = struct.pack('!IIIIIIII',
+                           0x99887766, 0x55443322, 0x11009988, 0x77665544, 0x33221100,
+                           0xaabbccdd, 0xeeff0011, 0x22334455)
     idx.add(obj_bin, 1, 0xfffffffff)
     idx.add(obj2_bin, 2, 0xffffffffff)
     idx.add(obj3_bin, 3, 0xff)
@@ -453,8 +458,8 @@ def _create_idx(d, i):
     idx = git.PackIdxV2Writer()
     # add 255 vaguely reasonable entries
     for s in range(255):
-        idx.add(struct.pack('18xBB', i, s), s, 100 * s)
-    packbin = struct.pack('B19x', i)
+        idx.add(struct.pack('%dxBB' % (_oid_len - 2), i, s), s, 100 * s)
+    packbin = struct.pack('B%dx' % (_oid_len - 1), i)
     packname = os.path.join(d, b'pack-%s.idx' % hexlify(packbin))
     idx.write(packname, packbin)
 
@@ -485,7 +490,7 @@ def test_midx_close(tmpdir):
     git.auto_midx(tmpdir)
     l = git.PackIdxList(tmpdir)
     # this doesn't exist (yet)
-    WVPASSEQ(None, l.exists(struct.pack('18xBB', 10, 0)))
+    WVPASSEQ(None, l.exists(struct.pack('%dxBB' % (_oid_len - 2), 10, 0)))
     for i in range(10, 15):
         _create_idx(tmpdir, i)
     # delete the midx ...
@@ -496,7 +501,7 @@ def test_midx_close(tmpdir):
     # and make a new one
     git.auto_midx(tmpdir)
     # check it still doesn't exist - we haven't refreshed
-    WVPASSEQ(None, l.exists(struct.pack('18xBB', 10, 0)))
+    WVPASSEQ(None, l.exists(struct.pack('%dxBB' % (_oid_len - 2), 10, 0)))
     # check that we still have the midx open, this really
     # just checks more for the kernel API ('deleted' string)
     for fn in openfiles():
@@ -506,7 +511,7 @@ def test_midx_close(tmpdir):
     # refresh the PackIdxList
     l.refresh()
     # and check that an object in pack 10 exists now
-    WVPASSEQ(True, l.exists(struct.pack('18xBB', 10, 0)))
+    WVPASSEQ(True, l.exists(struct.pack('%dxBB' % (_oid_len - 2), 10, 0)))
     for fn in openfiles():
         if not b'midx-' in fn:
             continue
