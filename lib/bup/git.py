@@ -413,7 +413,7 @@ class PackIdxV1(PackIdx):
         self.nsha = self.fanout[255]
         self.sha_ofs = 256 * 4
         # Avoid slicing shatable for individual hashes (very high overhead)
-        self.shatable = buffer(self.map, self.sha_ofs, self.nsha * 24)
+        self.shatable = buffer(self.map, self.sha_ofs, self.nsha * (4 + _oid_len))
 
     def __enter__(self):
         return self

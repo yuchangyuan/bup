@@ -1115,7 +1115,7 @@ static PyObject *write_idx(PyObject *self, PyObject *args)
 
     const char idx_header[] = "\377tOc\0\0\0\002";
     memcpy (fmap.buf, idx_header, sizeof(idx_header) - 1);
-
+    fprintf(stderr, "----> func %s, line %d\n", __FUNCTION__, __LINE__);
     fan_ptr = (uint32_t *)&((unsigned char *)fmap.buf)[sizeof(idx_header) - 1];
     sha_ptr = (struct sha *)&fan_ptr[FAN_ENTRIES];
     crc_ptr = (uint32_t *)&sha_ptr[total];
@@ -1148,15 +1148,20 @@ static PyObject *write_idx(PyObject *self, PyObject *args)
 	    if (!PyArg_ParseTuple(PyList_GET_ITEM(part, j), rbuf_argf "OO",
 				  &sha, &sha_len, &crc_py, &ofs_py))
                 goto clean_and_return;
+    fprintf(stderr, "----> func %s, line %d\n", __FUNCTION__, __LINE__);
             if(!bup_uint_from_py(&crc, crc_py, "crc"))
                 goto clean_and_return;
+    fprintf(stderr, "----> func %s, line %d\n", __FUNCTION__, __LINE__);
             if(!bup_ullong_from_py(&ofs_ull, ofs_py, "ofs"))
                 goto clean_and_return;
+    fprintf(stderr, "----> func %s, line %d\n", __FUNCTION__, __LINE__);
             assert(crc <= UINT32_MAX);
             assert(ofs_ull <= UINT64_MAX);
 	    ofs = ofs_ull;
+    fprintf(stderr, "----> sha_len = %ld, func %s, line %d\n", sha_len, __FUNCTION__, __LINE__);
 	    if (sha_len != sizeof(struct sha))
                 goto clean_and_return;
+    fprintf(stderr, "----> func %s, line %d\n", __FUNCTION__, __LINE__);
             memcpy(sha_ptr++, sha, sizeof(struct sha));
 	    *crc_ptr++ = htonl(crc);
 	    if (ofs > 0x7fffffff)
