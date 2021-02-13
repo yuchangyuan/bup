@@ -731,59 +731,48 @@ static PyObject *firstword(PyObject *self, PyObject *args)
 
 #define BLOOM2_HEADERLEN 16
 
-static void to_bloom_address_bitmask4(const unsigned char *buf,
-	const int nbits, uint64_t *v, unsigned char *bitmask)
+/*
+  get `size' bit for `sha', begin at offset
+  and `sha' is in network byte order
+ */
+static uint64_t bloom_extract(const unsigned char *sha, int offset, int size)
 {
-    int bit;
-    uint32_t high;
-    uint64_t raw, mask; // NOTE: here 64 >= 2 * OID_LEN
+    uint64_t lo = 0, hi = 0;
 
-    memcpy(&high, buf, 4);
-    mask = (1<<nbits) - 1;
-    raw = (((uint64_t)ntohl(high) << 8) | buf[4]);
-    bit = (raw >> (61-nbits)) & 0x7;
-    *v = (raw >> (64-nbits)) & mask;
-    *bitmask = 1 << bit;
+    // NOTE: bit index from `offset' to `offset + size - 1'
+    int bidx = offset / 8;
+
+    while ((bidx * 8 + 7) < offset + size) {
+        hi = (hi << 8) | (lo >> 56);
+        lo = (lo << 8) | sha[bidx];
+
+        bidx ++;
+    }
+
+    int boff = offset & 7;
+    if (boff != 0) {
+        lo >>= boff;
+        lo |= hi << (64 - boff);
+    }
+
+    return lo;
 }
 
-static void to_bloom_address_bitmask5(const unsigned char *buf,
-	const int nbits, uint64_t *v, unsigned char *bitmask)
+static void bloom_set_bit(unsigned char *buf, int offset)
 {
-    int bit;
-    uint32_t high;
-    uint64_t raw, mask;
+    int bidx = offset / 8;
+    int boff = offset & 7;
 
-    memcpy(&high, buf, 4);
-    mask = (1<<nbits) - 1;
-    raw = (((uint64_t)ntohl(high) << 8) | buf[4]);
-    bit = (raw >> (49-nbits)) & 0x7;
-    *v = (raw >> (52-nbits)) & mask;
-    *bitmask = 1 << bit;
+    buf[bidx] |= 1 << boff;
 }
 
-#define BLOOM_SET_BIT(name, address, otype) \
-static void name(unsigned char *bloom, const unsigned char *buf, const int nbits)\
-{\
-    unsigned char bitmask;\
-    otype v;\
-    address(buf, nbits, &v, &bitmask);\
-    bloom[BLOOM2_HEADERLEN+v] |= bitmask;\
+static int bloom_get_bit(unsigned char *buf, int offset)
+{
+    int bidx = offset / 8;
+    int boff = offset & 7;
+
+    return buf[bidx] & (1 << boff);
 }
-BLOOM_SET_BIT(bloom_set_bit4, to_bloom_address_bitmask4, uint64_t)
-BLOOM_SET_BIT(bloom_set_bit5, to_bloom_address_bitmask5, uint64_t)
-
-
-#define BLOOM_GET_BIT(name, address, otype) \
-static int name(const unsigned char *bloom, const unsigned char *buf, const int nbits)\
-{\
-    unsigned char bitmask;\
-    otype v;\
-    address(buf, nbits, &v, &bitmask);\
-    return bloom[BLOOM2_HEADERLEN+v] & bitmask;\
-}
-BLOOM_GET_BIT(bloom_get_bit4, to_bloom_address_bitmask4, uint64_t)
-BLOOM_GET_BIT(bloom_get_bit5, to_bloom_address_bitmask5, uint64_t)
-
 
 static PyObject *bloom_add(PyObject *self, PyObject *args)
 {
@@ -798,23 +787,40 @@ static PyObject *bloom_add(PyObject *self, PyObject *args)
     if (bloom.len < 16+(1<<nbits) || sha.len % OID_LEN != 0)
         goto clean_and_return;
 
-    if (k == 5)
+    if ((k == 5) && (nbits > 48))
+        goto clean_and_return;
+
+    if ((k == 4) && (nbits > 61))
+        goto clean_and_return;
+
+    if ((k == 5) || (k == 4))
     {
-        if (nbits > 49)
-            goto clean_and_return;
         unsigned char *cur = sha.buf;
         unsigned char *end;
-        for (end = cur + sha.len; cur < end; cur += OID_LEN/k)
-            bloom_set_bit5(bloom.buf, cur, nbits);
-    }
-    else if (k == 4)
-    {
-        if (nbits > 61)
-            goto clean_and_return;
-        unsigned char *cur = sha.buf;
-        unsigned char *end = cur + sha.len;
-        for (; cur < end; cur += OID_LEN/k)
-            bloom_set_bit4(bloom.buf, cur, nbits);
+
+        for (end = cur + sha.len; cur < end; cur += OID_LEN) {
+            int i;
+            int offset = 0;
+
+            for (i = 0; i < k; i++) {
+                int size = (i == k-1) ? (8 * OID_LEN - offset) : (8 * OID_LEN / k);
+
+                /*
+                fprintf(stderr, "--> k=%d, i=%d, offset=%d, size=%d\n",
+                        k, i, offset, size);
+                */
+
+                uint64_t idx = bloom_extract(cur, offset, size);
+
+                int idx1 = idx & ((1 << (nbits + 3)) - 1);
+
+                //fprintf(stderr, "--> nbits=%d, idx1=%d\n", nbits, idx1);
+
+                bloom_set_bit(bloom.buf + BLOOM2_HEADERLEN, idx1);
+
+                offset += size;
+            }
+        }
     }
     else
         goto clean_and_return;
@@ -842,31 +848,38 @@ static PyObject *bloom_contains(PyObject *self, PyObject *args)
     if (len != OID_LEN)
         goto clean_and_return;
 
-    if (k == 5)
+    if ((k == 5) && (nbits > 48))
+        goto clean_and_return;
+
+    if ((k == 4) && (nbits > 61))
+        goto clean_and_return;
+
+    if ((k == 5) || (k == 4))
     {
-        if (nbits > 49)
-            goto clean_and_return;
-        int steps;
-        unsigned char *end;
-        for (steps = 1, end = sha + OID_LEN; sha < end; sha += OID_LEN/k, steps++)
-            if (!bloom_get_bit5(bloom.buf, sha, nbits))
-            {
-                result = Py_BuildValue("Oi", Py_None, steps);
+        int offset = 0;
+        int i;
+
+        for (i = 0; i < k; i++) {
+            int size = (i == k-1) ? (8 * OID_LEN - offset) : (8 * OID_LEN / k);
+
+            /*
+            fprintf(stderr, "--> k=%d, i=%d, offset=%d, size=%d\n",
+                    k, i, offset, size);
+            */
+
+            uint64_t idx = bloom_extract(sha, offset, size);
+
+            int idx1 = idx & ((1 << (nbits + 3)) - 1);
+
+            //fprintf(stderr, "--> nbits=%d, idx1=%d\n", nbits, idx1);
+
+            if (!bloom_get_bit(bloom.buf + BLOOM2_HEADERLEN, idx1)) {
+                result = Py_BuildValue("Oi", Py_None, i + 1);
                 goto clean_and_return;
-            }
-    }
-    else if (k == 4)
-    {
-        if (nbits > 61)
-            goto clean_and_return;
-        int steps;
-        unsigned char *end;
-        for (steps = 1, end = sha + OID_LEN; sha < end; sha += OID_LEN/k, steps++)
-            if (!bloom_get_bit4(bloom.buf, sha, nbits))
-            {
-                result = Py_BuildValue("Oi", Py_None, steps);
-                goto clean_and_return;
-            }
+            };
+
+            offset += size;
+        }
     }
     else
         goto clean_and_return;
@@ -1115,7 +1128,7 @@ static PyObject *write_idx(PyObject *self, PyObject *args)
 
     const char idx_header[] = "\377tOc\0\0\0\002";
     memcpy (fmap.buf, idx_header, sizeof(idx_header) - 1);
-    fprintf(stderr, "----> func %s, line %d\n", __FUNCTION__, __LINE__);
+//    fprintf(stderr, "----> func %s, line %d\n", __FUNCTION__, __LINE__);
     fan_ptr = (uint32_t *)&((unsigned char *)fmap.buf)[sizeof(idx_header) - 1];
     sha_ptr = (struct sha *)&fan_ptr[FAN_ENTRIES];
     crc_ptr = (uint32_t *)&sha_ptr[total];
@@ -1148,20 +1161,20 @@ static PyObject *write_idx(PyObject *self, PyObject *args)
 	    if (!PyArg_ParseTuple(PyList_GET_ITEM(part, j), rbuf_argf "OO",
 				  &sha, &sha_len, &crc_py, &ofs_py))
                 goto clean_and_return;
-    fprintf(stderr, "----> func %s, line %d\n", __FUNCTION__, __LINE__);
+//    fprintf(stderr, "----> func %s, line %d\n", __FUNCTION__, __LINE__);
             if(!bup_uint_from_py(&crc, crc_py, "crc"))
                 goto clean_and_return;
-    fprintf(stderr, "----> func %s, line %d\n", __FUNCTION__, __LINE__);
+//    fprintf(stderr, "----> func %s, line %d\n", __FUNCTION__, __LINE__);
             if(!bup_ullong_from_py(&ofs_ull, ofs_py, "ofs"))
                 goto clean_and_return;
-    fprintf(stderr, "----> func %s, line %d\n", __FUNCTION__, __LINE__);
+//    fprintf(stderr, "----> func %s, line %d\n", __FUNCTION__, __LINE__);
             assert(crc <= UINT32_MAX);
             assert(ofs_ull <= UINT64_MAX);
 	    ofs = ofs_ull;
-    fprintf(stderr, "----> sha_len = %ld, func %s, line %d\n", sha_len, __FUNCTION__, __LINE__);
+//    fprintf(stderr, "----> sha_len = %ld, func %s, line %d\n", sha_len, __FUNCTION__, __LINE__);
 	    if (sha_len != sizeof(struct sha))
                 goto clean_and_return;
-    fprintf(stderr, "----> func %s, line %d\n", __FUNCTION__, __LINE__);
+//    fprintf(stderr, "----> func %s, line %d\n", __FUNCTION__, __LINE__);
             memcpy(sha_ptr++, sha, sizeof(struct sha));
 	    *crc_ptr++ = htonl(crc);
 	    if (ofs > 0x7fffffff)

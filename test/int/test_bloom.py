@@ -7,8 +7,10 @@ import logging
 from bup import bloom
 from bup.helpers import mkdirp
 
+_oid_len = 32
+
 def test_bloom(tmpdir):
-    hashes = [os.urandom(20) for i in range(100)]
+    hashes = [os.urandom(_oid_len) for i in range(100)]
     class Idx:
         pass
     ix = Idx()
@@ -25,7 +27,7 @@ def test_bloom(tmpdir):
             all_present &= (b.exists(h) or False)
         assert all_present
         false_positives = 0
-        for h in [os.urandom(20) for i in range(1000)]:
+        for h in [os.urandom(_oid_len) for i in range(1000)]:
             if b.exists(h):
                 false_positives += 1
         assert false_positives < 5
@@ -44,7 +46,7 @@ def test_bloom(tmpdir):
     try:
         b = bloom.create(b'bup.bloom', f=tf, expected=2**28,
                          delaywrite=False)
-        assert b.k == 4
+        assert b.k == 5
     except EnvironmentError as ex:
         (ptr_width, linkage) = platform.architecture()
         if ptr_width == '32bit' and ex.errno == errno.ENOMEM:
