@@ -25,7 +25,7 @@ sys.path[:0] = [os.path.dirname(os.path.realpath(__file__)) + '/..']
 
 from bup import compat, options, git
 from bup.compat import argv_bytes
-from bup.helpers import Sha1, chunkyreader, istty2, log, progress
+from bup.helpers import Sha1, Sha256, chunkyreader, istty2, log, progress
 from bup.io import byte_stream
 
 _oid_len = 32
