@@ -801,9 +801,11 @@ static PyObject *bloom_add(PyObject *self, PyObject *args)
         for (end = cur + sha.len; cur < end; cur += OID_LEN) {
             int i;
             int offset = 0;
+            int offset_next;
 
             for (i = 0; i < k; i++) {
-                int size = (i == k-1) ? (8 * OID_LEN - offset) : (8 * OID_LEN / k);
+                offset_next = (i+1) * 8 * OID_LEN / k;
+                int size = offset_next - offset;
 
                 /*
                 fprintf(stderr, "--> k=%d, i=%d, offset=%d, size=%d\n",
@@ -818,7 +820,7 @@ static PyObject *bloom_add(PyObject *self, PyObject *args)
 
                 bloom_set_bit(bloom.buf + BLOOM2_HEADERLEN, idx1);
 
-                offset += size;
+                offset = offset_next;
             }
         }
     }
@@ -857,10 +859,12 @@ static PyObject *bloom_contains(PyObject *self, PyObject *args)
     if ((k == 5) || (k == 4))
     {
         int offset = 0;
+        int offset_next;
         int i;
 
         for (i = 0; i < k; i++) {
-            int size = (i == k-1) ? (8 * OID_LEN - offset) : (8 * OID_LEN / k);
+            offset_next = (i+1) * 8 * OID_LEN / k;
+            int size = offset_next - offset;
 
             /*
             fprintf(stderr, "--> k=%d, i=%d, offset=%d, size=%d\n",
@@ -878,7 +882,7 @@ static PyObject *bloom_contains(PyObject *self, PyObject *args)
                 goto clean_and_return;
             };
 
-            offset += size;
+            offset = offset_next;
         }
     }
     else
