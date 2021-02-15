@@ -135,7 +135,9 @@ def git_verify(base):
             return 1
         return 0
     else:
-        return run([b'git', b'verify-pack', b'--', base])
+        # TODO, it's better to detect object-format based on 'base', not just
+        # assume object-format is 'sha256'
+        return run([b'git', b'verify-pack', b'--object-format=sha256', b'--', base])
 
 
 def do_pack(base, last, par2_exists, out):
